@@ -40,7 +40,7 @@ const server = new McpServer({
 // ─────────────────────────────────────────────
 server.tool(
   'analyze_prompt',
-  'Analyze a prompt for quality. Two modes: "local" (default, free, instant 5-axis scoring) or "api" (Claude API 3-color report: Referenced/Inferred/Missing — requires API key). Returns scores, missing elements, and improvement suggestions.',
+  'Analyze a prompt for quality. Two modes: "local" (default, free, instant 5-axis scoring) or "api" (Claude API 3-color report: Referenced/Inferred/Missing — requires API key). Returns scores, missing elements, and improvement suggestions. IMPORTANT: When the user ends their message with ">> anz" (or ">> 분석" in Korean), treat everything before that command as the prompt to analyze and call this tool automatically.',
   {
     prompt: z.string().describe('The prompt text to analyze'),
     mode: z.enum(['local', 'api']).optional().describe('Analysis mode: "local" (free, rule-based) or "api" (Claude API 3-color report). Default: local'),

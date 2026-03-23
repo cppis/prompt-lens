@@ -1,7 +1,7 @@
 {
-  "name": "promptlens-mcp-server",
+  "name": "promptlens-mcp",
   "version": "0.3.0",
-  "description": "PromptLens MCP Server — Prompt analysis tools for Claude Desktop & Claude Code",
+  "description": "PromptLens — AI prompt analysis MCP server for Claude Desktop & Claude Code. Shows how AI reads your prompts with 5-axis scoring and 3-color interpretation reports.",
   "type": "module",
   "main": "index.js",
   "bin": {
@@ -10,6 +10,30 @@
   "scripts": {
     "start": "node index.js",
     "test": "node --test test/"
+  },
+  "keywords": [
+    "mcp",
+    "prompt",
+    "analysis",
+    "claude",
+    "anthropic",
+    "prompt-engineering",
+    "model-context-protocol"
+  ],
+  "author": "cppis",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cppis/prompt-lens"
+  },
+  "files": [
+    "index.js",
+    "lib/",
+    "package.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",

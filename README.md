@@ -1,161 +1,228 @@
-# PromptLens
+# PromptLens — Getting Started
 
-> AI가 내 말을 어떻게 이해했는지 보여주고, 부족한 맥락을 알아서 채워준다.
+> 5분 안에 PromptLens를 설치하고 첫 프롬프트를 분석해봅니다.
 
-## 개요
+---
 
-PromptLens는 Claude Desktop과 Claude Code에서 MCP 도구로 동작하는 프롬프트 분석 시스템입니다. 대화 중 자연스럽게 "이 프롬프트를 분석해줘"라고 요청하면, 품질 점수·누락 요소·개선 제안을 즉시 받을 수 있습니다.
+## 준비물
 
-두 가지 분석 모드를 제공합니다:
+- **Node.js 18 이상** — [다운로드](https://nodejs.org/)
+- **Claude Desktop** 또는 **Claude Code** — [Claude Desktop 다운로드](https://claude.ai/download)
 
-- **local** (기본): 로컬 규칙 엔진으로 즉시 분석. API 키 불필요, 비용 0.
-- **api**: Claude API 메타 분석으로 3색 리포트 생성. Referenced(이해한 것) / Inferred(추론한 것) / Missing(부재 정보)를 분류.
+---
 
-## 핵심 기능
+## Step 1. MCP 서버 등록
 
-**프롬프트 품질 분석** — 5축 점수(Clarity, Specificity, Context, Structure, Actionability)와 누락 요소 감지, 개선 제안, 보강된 프롬프트를 제공합니다.
+PromptLens를 Claude에 연결하는 단계입니다. 개발 중인 소스를 사용하는 방법과 npm 배포판을 사용하는 방법이 있습니다.
 
-**3색 해석 리포트** (API 모드) — Claude API를 통해 프롬프트를 AI 관점에서 분해합니다.
-- Referenced (초록): AI가 명확히 이해한 용어
-- Inferred (오렌지): AI가 추론한 배경 맥락 + 확신도
-- Missing (빨강): AI가 모르는 부재 정보 + 보충 가이드
-
-**프로젝트별 히스토리** — 분석 결과를 프로젝트 단위로 기록·관리합니다. 점수 추이, 태그, 노트를 추적합니다.
-
-**Claude 대화 Import** — Claude Desktop(conversations.json)과 Claude Code(.jsonl)의 대화를 Import하여 기존 프롬프트를 분석·관리합니다.
-
-## 설치
+### 방법 A: 소스에서 직접 실행 (개발용)
 
 ```bash
-cd mcp-server
+git clone https://github.com/cppis/prompt-lens.git
+cd prompt-lens/mcp-server
 npm install
 ```
 
-## Claude Desktop 설정
+자동 설정 스크립트를 실행하면 Claude Desktop에 PromptLens가 등록됩니다:
 
-`claude_desktop_config.json`에 추가합니다:
+```bash
+./scripts/setup-claude-desktop.sh
+```
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+스크립트가 OS를 감지하여 `claude_desktop_config.json`에 자동 등록합니다. 기존 MCP 설정은 유지됩니다.
+
+**Claude Code를 사용하는 경우:**
+
+```bash
+claude mcp add promptlens node /your/path/to/prompt-lens/mcp-server/index.js
+```
+
+<details>
+<summary>수동 설정 (자동 스크립트 대신 직접 config 편집)</summary>
+
+| OS | config 파일 경로 |
+|------|-----------------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
 ```json
 {
   "mcpServers": {
     "promptlens": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-server/index.js"]
+      "args": ["/your/path/to/prompt-lens/mcp-server/index.js"]
     }
   }
 }
 ```
 
-설정 후 Claude Desktop을 재시작합니다.
+> `/your/path/to/` 부분을 실제 clone한 경로로 바꿔주세요. 설정 후 Claude Desktop을 재시작합니다.
+</details>
 
-## Claude Code 설정
+### 방법 B: npx로 실행 (npm 배포 후)
+
+npm에 publish된 후에는 소스 clone 없이 바로 사용할 수 있습니다.
+
+```json
+{
+  "mcpServers": {
+    "promptlens": {
+      "command": "npx",
+      "args": ["-y", "promptlens-mcp"]
+    }
+  }
+}
+```
+
+**Claude Code:**
 
 ```bash
-claude mcp add promptlens node /absolute/path/to/mcp-server/index.js
+claude mcp add promptlens -- npx -y promptlens-mcp
 ```
 
-## 제공 도구 (9개)
+---
 
-| 도구 | 설명 |
-|------|------|
-| `analyze_prompt` | 프롬프트 품질 분석 (mode: local/api) |
-| `list_projects` | 모든 프로젝트 목록 + 통계 |
-| `create_project` | 새 프로젝트 생성 |
-| `get_history` | 프로젝트별 히스토리 조회 (검색·페이징) |
-| `add_history_entry` | 프롬프트를 히스토리에 수동 추가 |
-| `import_claude_conversations` | Claude Desktop/Code 대화 Import |
-| `get_stats` | 전체 통계 (프로젝트 수, 평균 점수, 태그) |
-| `set_api_key` | API 키 등록 + 유효성 검증 |
-| `get_settings` | 현재 설정 확인 (API 키 상태, 모델) |
+## Step 2. Claude Desktop 재시작
 
-## 사용 예시
+config 파일을 저장한 후 **Claude Desktop을 완전히 종료하고 다시 실행**합니다.
 
-**프롬프트 분석 (로컬):**
-> "React로 로그인 폼 만들어줘"라는 프롬프트를 분석해줘
+정상적으로 등록되면 Claude Desktop 입력창 우측 하단에 MCP 도구 아이콘(🔧)이 나타나고, `promptlens`가 목록에 보입니다.
 
-→ Score: 43/100 (D). Missing: Role, Context, Output Format, Example.
+**확인 방법 (Claude Code):**
 
-**프롬프트 분석 (API — 3색 리포트):**
-> 이 프롬프트를 API 모드로 분석해줘: "React로 로그인 폼 만들어줘"
-
-→ Referenced: React(JS UI 라이브러리), 로그인 폼(인증 UI). Inferred: 웹 앱(high), 함수형 컴포넌트(medium). Missing: 인증 방식, 스타일링, 상태 관리.
-
-**API 키 등록:**
-> PromptLens에 API 키 등록해줘: sk-ant-api03-...
-
-→ 키 유효성 검증 후 저장. 이후 analyze_prompt에서 mode: "api" 사용 가능.
-
-**대화 Import:**
-> ~/Downloads/conversations.json을 PromptLens에 Import해줘
-
-→ 377개 대화에서 1,234개 프롬프트를 Import.
-
-## 아키텍처
-
-```
-[Claude Desktop / Claude Code]
-    │
-    ├── MCP 도구 호출 (stdio)
-    │
-    ▼
-[PromptLens MCP Server]
-    ├── analyze_prompt (local) → 로컬 규칙 엔진 (즉시, 무료)
-    ├── analyze_prompt (api)   → Claude API 메타 분석 (3색 리포트, BYOK)
-    ├── 프로젝트·히스토리 CRUD → ~/.promptlens/data.json
-    ├── 설정·API 키            → ~/.promptlens/settings.json
-    └── Claude 대화 Import     → conversations.json / .jsonl 파서
+```bash
+claude mcp list
 ```
 
-## 기술 스택
+출력에 `promptlens`가 있으면 성공입니다.
 
-| 계층 | 기술 |
-|------|------|
-| 런타임 | Node.js (ES Modules) |
-| MCP SDK | @modelcontextprotocol/sdk (stdio transport) |
-| 스키마 검증 | Zod |
-| 분석 엔진 | 로컬 규칙 엔진 (5축 패턴 매칭) + Claude API (3색 분류) |
-| AI | Anthropic Claude API (BYOK — Sonnet / Haiku / Opus) |
-| 저장소 | 파일 기반 JSON (~/.promptlens/) |
+---
 
-## 프로젝트 구조
+## Step 3. 첫 프롬프트 분석
+
+Claude Desktop 대화창에서 프롬프트 끝에 `>> anz` (한글: `>> 분석`)을 붙이면 자동으로 분석됩니다:
 
 ```
-mcp-server/
-├── index.js                 ← MCP Server 엔트리 (9개 도구 등록)
-├── lib/
-│   ├── analyzer.js          ← 분석 엔진 (local + api 두 모드)
-│   ├── storage.js           ← 파일 기반 저장소 + 설정 관리
-│   └── importer.js          ← Claude Desktop/Code 대화 Import
-├── package.json
-└── node_modules/
-
-prototype/                   ← 이전 프로토타입 (참고용, 향후 제거 예정)
-├── chrome-extension/        ← v0.1 크롬 확장 프로토타입
-└── visualization/           ← v0.2 Svelte + D3.js + ECharts 시각화
+React로 로그인 폼 만들어줘 >> anz
 ```
 
-## 문서
+```
+React로 로그인 폼 만들어줘 >> 분석
+```
 
-| 문서 | 내용 |
-|------|------|
-| `docs/0.overview.md` | 프롬프트 분석 메커니즘 (3색 분류, Context 획득, MCP 분석 흐름) |
-| `docs/1.add.md` | 제품 설계 + 시장 조사 (기능 메카닉, 경쟁 분석, 포지셔닝) |
-| `docs/2.plan.md` | 개발 계획 (MCP 아키텍처, 코어 패키지 구조, 검증 지표) |
-| `docs/3.usage.md` | 사용 가이드 (설치, 설정, 기능별 사용법, FAQ) |
+또는 자연어로 요청해도 됩니다:
 
-## FAQ
+```
+"React로 로그인 폼 만들어줘"라는 프롬프트를 분석해줘
+```
 
-**Q: API 키 없이도 사용할 수 있나요?**
+PromptLens가 자동으로 호출되어 분석 결과를 돌려줍니다:
 
-네. 기본 `local` 모드는 API 키 없이 즉시 분석 가능합니다. API 키를 등록하면 추가로 `api` 모드(3색 리포트)를 사용할 수 있습니다.
+```
+📊 종합 점수: 43/100 (D등급)
 
-**Q: 크롬 확장은 어떻게 되나요?**
+5축 점수:
+  - 명확성(Clarity): 55
+  - 구체성(Specificity): 30
+  - 맥락(Context): 35
+  - 구조(Structure): 40
+  - 실행성(Actionability): 50
 
-`prototype/` 디렉토리에 참고용으로 유지됩니다. MCP Server가 유일한 공식 클라이언트이며, 시각화가 필요하면 Claude에게 분석 결과를 차트나 표로 정리해달라고 요청하면 됩니다.
+❌ 누락된 요소: Role, Context, Output Format, Example, Constraints
 
-**Q: 데이터는 어디에 저장되나요?**
+💡 개선 제안:
+  - 역할을 지정하세요 (예: "너는 시니어 React 개발자야")
+  - 로그인 폼의 구체적 요구사항을 명시하세요
+  - 원하는 출력 형식을 지정하세요
 
-`~/.promptlens/data.json` (프로젝트·히스토리)과 `~/.promptlens/settings.json` (API 키·모델 설정). 모두 로컬 파일이며 외부로 전송되지 않습니다.
+✨ 개선된 프롬프트:
+  "너는 시니어 React 개발자야. TypeScript 기반의 로그인 폼 컴포넌트를 만들어줘.
+   이메일/비밀번호 입력, 유효성 검증, 에러 메시지 표시를 포함하고,
+   Tailwind CSS로 스타일링해줘. 코드와 함께 사용법을 설명해줘."
+```
+
+---
+
+## Step 4. 프로젝트 만들기 (선택)
+
+프롬프트 분석 기록을 프로젝트별로 관리할 수 있습니다.
+
+```
+PromptLens에 "웹 개발" 프로젝트를 만들어줘
+```
+
+프로젝트를 만든 후, 분석할 때 프로젝트에 저장할 수 있습니다:
+
+```
+"REST API 설계해줘"를 분석하고 "웹 개발" 프로젝트에 저장해줘
+```
+
+나중에 기록을 확인하려면:
+
+```
+"웹 개발" 프로젝트의 히스토리를 보여줘
+```
+
+---
+
+## Step 5. API 모드 활성화 (선택)
+
+더 정밀한 분석이 필요하면 Anthropic API 키를 등록하여 API 모드를 사용할 수 있습니다.
+
+### API 키 발급
+
+1. [Anthropic Console](https://console.anthropic.com/)에 로그인
+2. 좌측 메뉴에서 **API Keys** 선택
+3. **Create Key** 클릭 → 이름 입력 → 생성
+4. 생성된 키(`sk-ant-api03-...`)를 복사
+
+### API 키 등록
+
+Claude 대화에서:
+
+```
+PromptLens API 키를 설정해줘: sk-ant-api03-xxxxx
+```
+
+키가 자동으로 검증되고 로컬(`~/.promptlens/settings.json`)에 저장됩니다.
+
+### API 모드로 분석
+
+```
+이 프롬프트를 API 모드로 분석해줘: "React로 로그인 폼 만들어줘"
+```
+
+API 모드는 3색 리포트를 제공합니다:
+
+| 색상 | 의미 | 설명 |
+|------|------|------|
+| ✅ **Referenced** | 명시적 언급 | 프롬프트에 직접 적힌 정보 |
+| 🟡 **Inferred** | AI 추론 | 명시하지 않았지만 AI가 추측하는 정보 (+ 신뢰도) |
+| ❌ **Missing** | 누락 | 프롬프트에 없고 추론도 어려운 정보 |
+
+> API 모드는 사용자의 API 키로 Claude API를 호출하므로 별도 비용이 발생합니다. 일상적 분석에는 무료인 local 모드를 권장합니다.
+
+---
+
+## 다음 단계
+
+PromptLens의 모든 기능(9개 도구)에 대한 자세한 설명은 아래 문서를 참고하세요.
+
+- [README](../README.md) — 전체 기능 요약, 설치 옵션, 사용법
+- [사용 가이드](3.usage.md) — 도구별 파라미터, 시나리오별 사용법, FAQ
+- [프로젝트 개요](0.overview.md) — 아키텍처, 로드맵
+
+### 자주 쓰는 명령 모음
+
+| 하고 싶은 것 | Claude에게 이렇게 말하세요 |
+|-------------|---------------------------|
+| 프롬프트 분석 (간단) | `... >> anz` 또는 `... >> 분석` |
+| 프롬프트 분석 (자연어) | `"이 프롬프트를 분석해줘: ..."` |
+| API 모드 분석 | `"API 모드로 분석해줘: ..."` |
+| 프로젝트 생성 | `"PromptLens에 '프로젝트명' 프로젝트를 만들어줘"` |
+| 프로젝트 목록 | `"PromptLens 프로젝트 목록을 보여줘"` |
+| 히스토리 조회 | `"'프로젝트명' 히스토리를 보여줘"` |
+| 대화 Import | `"conversations.json을 Import해줘"` |
+| 통계 확인 | `"PromptLens 통계를 보여줘"` |
+| 설정 확인 | `"PromptLens 설정을 보여줘"` |
+| API 키 등록 | `"PromptLens API 키를 설정해줘: sk-ant-..."` |
