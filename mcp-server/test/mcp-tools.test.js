@@ -18,19 +18,53 @@ const SERVER_PATH = path.join(__dirname, '..', 'index.js');
 
 // Clean up any test data
 const PROMPTLENS_DIR = path.join(os.homedir(), '.promptlens');
-const DATA_FILE = path.join(PROMPTLENS_DIR, 'data.json');
+const DATA_FILE = path.join(PROMPTLENS_DIR, 'data.json');       // legacy (kept for compat)
+const PROJECTS_DIR = path.join(PROMPTLENS_DIR, 'projects');     // v0.4.0+ storage
 const SETTINGS_FILE = path.join(PROMPTLENS_DIR, 'settings.json');
 
 let savedData = null;
 let savedSettings = null;
+let savedProjects = null; // { filename -> content } map
+
+/** Recursively delete a directory (like rm -rf). */
+function rmDir(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    fs.statSync(full).isDirectory() ? rmDir(full) : fs.unlinkSync(full);
+  }
+  fs.rmdirSync(dir);
+}
+
+/** Backup all files inside PROJECTS_DIR into a { relPath -> content } map. */
+function backupProjects() {
+  if (!fs.existsSync(PROJECTS_DIR)) return null;
+  const map = {};
+  for (const f of fs.readdirSync(PROJECTS_DIR)) {
+    const full = path.join(PROJECTS_DIR, f);
+    if (!fs.statSync(full).isDirectory()) map[f] = fs.readFileSync(full, 'utf-8');
+  }
+  return map;
+}
+
+/** Restore files from the backup map created by backupProjects(). */
+function restoreProjects(map) {
+  if (!map) return;
+  fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+  for (const [f, content] of Object.entries(map)) {
+    fs.writeFileSync(path.join(PROJECTS_DIR, f), content, 'utf-8');
+  }
+}
 
 before(() => {
   // Backup existing data
   if (fs.existsSync(DATA_FILE)) savedData = fs.readFileSync(DATA_FILE, 'utf-8');
   if (fs.existsSync(SETTINGS_FILE)) savedSettings = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+  savedProjects = backupProjects();
   // Start fresh
   if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
   if (fs.existsSync(SETTINGS_FILE)) fs.unlinkSync(SETTINGS_FILE);
+  rmDir(PROJECTS_DIR);
 });
 
 after(() => {
@@ -39,6 +73,8 @@ after(() => {
   else if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
   if (savedSettings) fs.writeFileSync(SETTINGS_FILE, savedSettings, 'utf-8');
   else if (fs.existsSync(SETTINGS_FILE)) fs.unlinkSync(SETTINGS_FILE);
+  rmDir(PROJECTS_DIR);
+  restoreProjects(savedProjects);
 });
 
 /**
@@ -135,6 +171,7 @@ describe('MCP Tool — list_projects (empty state)', () => {
   it('returns empty array when no projects exist', async () => {
     // Clean before test
     if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
+    rmDir(PROJECTS_DIR);
 
     const responses = await callMcp([
       toolCall(1, 'list_projects')
@@ -153,6 +190,7 @@ describe('MCP Tool — list_projects (empty state)', () => {
 describe('MCP Tool — create_project + list_projects', () => {
   it('creates a project and lists it', async () => {
     if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
+    rmDir(PROJECTS_DIR);
 
     const responses = await callMcp([
       toolCall(1, 'create_project', { name: 'MCP Test Project' }),
@@ -231,6 +269,7 @@ describe('MCP Tool — get_settings', () => {
 describe('MCP Tool — get_stats', () => {
   it('returns zero stats when empty', async () => {
     if (fs.existsSync(DATA_FILE)) fs.unlinkSync(DATA_FILE);
+    rmDir(PROJECTS_DIR);
 
     const responses = await callMcp([
       toolCall(1, 'get_stats')
@@ -266,7 +305,7 @@ describe('MCP Tool — set_api_key', () => {
 // ── Tool: tools/list ──
 
 describe('MCP — tools/list', () => {
-  it('lists all 16 tools', async () => {
+  it('lists all 20 tools', async () => {
     const responses = await callMcp([
       { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }
     ]);
@@ -296,7 +335,13 @@ describe('MCP — tools/list', () => {
     assert.ok(names.includes('import_project'),    'import_project tool should exist');
     assert.ok(names.includes('query_history'),     'query_history tool should exist');
     assert.ok(names.includes('snapshot_project'),  'snapshot_project tool should exist');
-    assert.equal(tools.length, 16);
+    // v0.5.0 — 1 new tool
+    assert.ok(names.includes('set_active_project'), 'set_active_project tool should exist');
+    // v0.5.1 — 3 new tools
+    assert.ok(names.includes('batch_analyze'),     'batch_analyze tool should exist');
+    assert.ok(names.includes('improve_prompt'),    'improve_prompt tool should exist');
+    assert.ok(names.includes('loop_improve'),      'loop_improve tool should exist');
+    assert.equal(tools.length, 20);
   });
 });
 

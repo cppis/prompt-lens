@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * PromptLens MCP Server (v0.4.0)
+ * PromptLens MCP Server (v0.5.1)
  *
  * MCP-only architecture — all PromptLens features accessible via
  * Claude Desktop and Claude Code as native MCP tools.
@@ -9,10 +9,11 @@
  * Transport: stdio
  * Storage: ~/.promptlens/projects/{id}.json (per-project), ~/.promptlens/settings.json (config)
  *
- * Tools (16):
- *   analyze_prompt          — Prompt quality analysis (local rules or Claude API)
+ * Tools (20):
+ *   analyze_prompt          — Prompt quality analysis (local rules or Claude API) + auto-tag
  *   list_projects           — List all projects with stats
  *   create_project          — Create a new project
+ *   set_active_project      — Set / clear / get the active project
  *   get_history             — Get prompt history for a project
  *   add_history_entry       — Add a prompt to history
  *   import_claude_conversations — Import Claude Desktop/Code conversations
@@ -26,6 +27,9 @@
  *   import_project          — Import a .promptlens.json file into a project
  *   query_history           — Advanced history query with score/date/grade/tag filters
  *   snapshot_project        — Save a timestamped project snapshot + diff between snapshots
+ *   batch_analyze           — Analyze multiple prompts at once (v0.5.1)
+ *   improve_prompt          — Auto-generate improved prompt from analysis (v0.5.1)
+ *   loop_improve            — Repeat improve→analyze until target score reached (v0.5.1)
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -40,12 +44,15 @@ import { generateDashboardHtml, generateOverviewHtml } from './lib/visualizer.js
 import { compareEntries } from './lib/differ.js';
 import { toJson, toMarkdown, toCsv, fromJson } from './lib/exporter.js';
 import { filterEntries, sortEntries, summarizeFilter } from './lib/query.js';
+import { session } from './lib/session.js';
+import { suggestTagsLocal, suggestTagsApi } from './lib/tagger.js';
+import { generateImprovedPrompt, runImprovementLoop } from './lib/improver.js';
 
 const storage = new Storage();
 
 const server = new McpServer({
   name: 'promptlens',
-  version: '0.4.0'
+  version: '0.5.1'
 });
 
 // ─────────────────────────────────────────────
@@ -61,16 +68,21 @@ TRIGGER RULES — call this tool automatically when:
 3. Deep analyze: user ends message with ">> deep" or ">> 정밀분석". Treat everything before it as the prompt. Run the full deep-analyze pipeline: (1) call analyze_prompt on the original, (2) generate an improved prompt fixing all missing elements, (3) call analyze_prompt again on the improved version, (4) compare and show the score difference. If a projectId is available, save both entries with parentId linking.
 4. Natural language (EN): user says "analyze this prompt", "check this prompt", "rate this prompt", "how good is this prompt", "evaluate my prompt", "review this prompt".
 5. Natural language (KR): user says "이 프롬프트 분석해줘", "프롬프트 점검해줘", "프롬프트 평가해줘", "이거 분석해봐", "프롬프트 리뷰해줘", "이 프롬프트 어때", "이 프롬프트 괜찮아?", "프롬프트 좀 봐줘".
-6. Implicit analysis: user pastes a prompt and asks "이거 괜찮아?", "이거 좀 부족한데", "이거 어떻게 개선해?", "what's wrong with this", "how can I improve this".`,
+6. Implicit analysis: user pastes a prompt and asks "이거 괜찮아?", "이거 좀 부족한데", "이거 어떻게 개선해?", "what's wrong with this", "how can I improve this".
+7. Re-analyze: user ends message with ">> re" or ">> 재분석" or ">> v2". Treat everything before it as the new prompt. Automatically set parentId to the most recent entryId from this session (the last analyze_prompt result). This links the new analysis as a revision of the previous one.
+8. Auto-improve: user ends message with ">> fix" or ">> 개선". Call analyze_prompt on the previous entry's prompt, then use the improver to generate an improved version. Show the improved prompt and score delta. If ">> fix+save" or ">> 개선+저장", also save the improved version to history.
+9. Improvement loop: user ends message with ">> loop" or ">> loop N" or ">> 루프" or ">> 루프 N". Run the improvement loop: repeatedly improve and re-analyze until the target score N (default 85) is reached or maxIterations (5) is exceeded.`,
   {
     prompt: z.string().describe('The prompt text to analyze'),
     mode: z.enum(['local', 'api']).optional().describe('Analysis mode: "local" (free, rule-based) or "api" (Claude API 3-color report). Default: local'),
     projectId: z.string().optional().describe('Optional project ID to save the analysis to history'),
     tags: z.array(z.string()).optional().describe('Optional tags for the history entry'),
-    parentId: z.string().optional().describe('Parent entry ID for version tracking. Links this analysis as a revision of a previous prompt.'),
-    autoRun: z.boolean().optional().describe('When true (triggered by ">> anz+run" or ">> 분석+실행"), the caller MUST execute the enhancedPrompt immediately after showing the analysis. Do not just display it — run it as a new user request.')
+    parentId: z.string().optional().describe('Parent entry ID for version tracking. Links this analysis as a revision of a previous prompt. When using ">> re" or ">> v2" trigger, this is auto-filled with the last entryId from the session.'),
+    autoRun: z.boolean().optional().describe('When true (triggered by ">> anz+run" or ">> 분석+실행"), the caller MUST execute the enhancedPrompt immediately after showing the analysis. Do not just display it — run it as a new user request.'),
+    autoTag: z.boolean().optional().describe('Enable auto tag suggestion (default: true). Suggests tags based on prompt content.'),
+    tagMode: z.enum(['suggest', 'auto']).optional().describe('"suggest" (default): show suggested tags in response only. "auto": automatically apply suggested tags to the history entry.')
   },
-  async ({ prompt, mode, projectId, tags, parentId, autoRun }) => {
+  async ({ prompt, mode, projectId, tags, parentId, autoRun, autoTag, tagMode }) => {
     const analysisMode = mode || 'local';
     // projectId가 없으면 활성 프로젝트로 자동 폴백 — entryId를 항상 발급받기 위함
     const effectiveProjectId = projectId || storage.getActiveProject() || null;
@@ -108,6 +120,28 @@ TRIGGER RULES — call this tool automatically when:
       result = analyzePrompt(prompt);
     }
 
+    // ── 자동 태그 추천 (v0.5.1) ──
+    const shouldAutoTag = autoTag !== false; // 기본값 true
+    let suggestedTags = [];
+    if (shouldAutoTag) {
+      if (analysisMode === 'api') {
+        const apiKey = storage.getApiKey();
+        // api 모드: 의미 기반 태그 (실패 시 local fallback 내장)
+        suggestedTags = await suggestTagsApi(prompt, apiKey);
+      } else {
+        suggestedTags = suggestTagsLocal(prompt);
+      }
+    }
+
+    // 태그 결합: 사용자 지정 태그 + 자동 태그 (tagMode: "auto" 시)
+    const effectiveTagMode = tagMode || 'suggest';
+    let entryTags = tags || ['mcp', analysisMode];
+    if (effectiveTagMode === 'auto' && suggestedTags.length > 0) {
+      // 사용자 태그 + 자동 태그 합산 (중복 제거)
+      const tagSet = new Set([...entryTags, ...suggestedTags]);
+      entryTags = [...tagSet];
+    }
+
     // Save to history if effectiveProjectId is available (explicit or active project fallback)
     let savedEntry = null;
     if (effectiveProjectId) {
@@ -116,11 +150,16 @@ TRIGGER RULES — call this tool automatically when:
         enhanced: result.enhancedPrompt || result.enhanced || '',
         score: result.score,
         axisScores: result.axisScores,
-        tags: tags || ['mcp', analysisMode],
+        tags: entryTags,
         note: `[MCP ${analysisMode}] ${result.summary}`,
         platform: 'claude',
         parentId: parentId || null
       });
+    }
+
+    // ── 세션 컨텍스트 업데이트 (v0.5.1) ──
+    if (savedEntry) {
+      session.setLastEntry(savedEntry.id, effectiveProjectId);
     }
 
     // Auto-diff with parent if parentId is set
@@ -139,6 +178,14 @@ TRIGGER RULES — call this tool automatically when:
     }
     if (diff) {
       response.diff = diff;
+    }
+
+    // 자동 태그 결과 첨부
+    if (shouldAutoTag && suggestedTags.length > 0) {
+      response.suggestedTags = suggestedTags;
+      if (effectiveTagMode === 'auto') {
+        response.appliedTags = entryTags;
+      }
     }
 
     // autoRun: instruct the LLM to execute the enhanced prompt immediately
@@ -273,6 +320,8 @@ server.tool(
       note: note || '',
       platform: 'claude'
     });
+    // 세션 컨텍스트 업데이트 (v0.5.1)
+    session.setLastEntry(entry.id, projectId);
     return {
       content: [{
         type: 'text',
@@ -1094,6 +1143,314 @@ server.prompt(
       }
     }]
   })
+);
+
+// ─────────────────────────────────────────────
+// Tool: batch_analyze (v0.5.1)
+// ─────────────────────────────────────────────
+server.tool(
+  'batch_analyze',
+  `Analyze multiple prompts at once and return a ranked comparison table. Useful for evaluating prompt candidates or scoring existing prompts in bulk.
+
+TRIGGER RULES — call this tool when:
+1. User says "여러 프롬프트 한 번에 분석해줘" or "batch analyze these prompts"
+2. User says "후보 프롬프트들 비교해줘" or "compare these prompt candidates"
+3. User provides multiple prompts and asks for ranking or comparison`,
+  {
+    prompts: z.array(z.string()).min(2).max(20).describe('Array of prompt texts to analyze (2-20 prompts)'),
+    mode: z.enum(['local', 'api']).optional().describe('Analysis mode: "local" (default) or "api"'),
+    projectId: z.string().optional().describe('Project ID to save results'),
+    saveAll: z.boolean().optional().describe('Save all results to history (default: false)'),
+    tags: z.array(z.string()).optional().describe('Common tags to apply to all entries')
+  },
+  async ({ prompts, mode, projectId, saveAll, tags }) => {
+    const analysisMode = mode || 'local';
+    const effectiveProjectId = projectId || storage.getActiveProject() || null;
+    const shouldSave = saveAll === true;
+
+    // api 모드: API 키 확인
+    if (analysisMode === 'api') {
+      const apiKey = storage.getApiKey();
+      if (!apiKey) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              error: 'API key not set. Use set_api_key tool first, or use mode: "local".',
+              hint: 'Run: set_api_key with your Anthropic API key (sk-ant-...)'
+            }, null, 2)
+          }]
+        };
+      }
+    }
+
+    const results = [];
+
+    if (analysisMode === 'api') {
+      // API 모드: 동시 요청 제한 (semaphore 3)
+      const apiKey = storage.getApiKey();
+      const model = storage.getModel();
+      const MAX_CONCURRENT = 3;
+
+      for (let i = 0; i < prompts.length; i += MAX_CONCURRENT) {
+        const batch = prompts.slice(i, i + MAX_CONCURRENT);
+        const batchResults = await Promise.all(
+          batch.map(async (p) => {
+            try {
+              return await analyzePromptWithApi(p, apiKey, model);
+            } catch {
+              // API 실패 시 local fallback
+              return analyzePrompt(p);
+            }
+          })
+        );
+        results.push(...batchResults.map((r, j) => ({ prompt: batch[j], ...r })));
+      }
+    } else {
+      // Local 모드: 순차 처리 (CPU bound)
+      for (const p of prompts) {
+        const r = analyzePrompt(p);
+        results.push({ prompt: p, ...r });
+      }
+    }
+
+    // 점수 내림차순 정렬
+    results.sort((a, b) => b.score - a.score);
+
+    // 히스토리 저장 + entryId 발급
+    const entries = [];
+    if (shouldSave && effectiveProjectId) {
+      for (const r of results) {
+        // 자동 태그 추천
+        const suggestedTags = suggestTagsLocal(r.prompt);
+        const entryTags = new Set([...(tags || ['mcp', analysisMode]), '#batch', ...suggestedTags]);
+
+        const entry = await storage.addHistoryEntry(effectiveProjectId, {
+          prompt: r.prompt,
+          enhanced: r.enhancedPrompt || r.enhanced || '',
+          score: r.score,
+          axisScores: r.axisScores,
+          tags: [...entryTags],
+          note: `[batch ${analysisMode}] ${r.summary || ''}`,
+          platform: 'claude'
+        });
+        entries.push(entry);
+        // 마지막 엔트리를 세션에 기록
+        session.setLastEntry(entry.id, effectiveProjectId);
+      }
+    }
+
+    // 결과 테이블 구성
+    const table = results.map((r, idx) => ({
+      rank: idx + 1,
+      score: r.score,
+      grade: r.grade,
+      entryId: entries[idx]?.id || null,
+      promptSummary: r.prompt.length > 60 ? r.prompt.slice(0, 60) + '...' : r.prompt,
+      missingElements: r.missingElements || r.missing || []
+    }));
+
+    const avgScore = Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length * 10) / 10;
+
+    // api 모드 비용 안내
+    const costWarning = analysisMode === 'api'
+      ? `⚠️ API 모드: ${prompts.length}건의 API 호출이 발생했습니다.`
+      : null;
+
+    const response = {
+      totalPrompts: prompts.length,
+      averageScore: avgScore,
+      bestEntry: table[0],
+      table,
+      saved: shouldSave,
+      ...(costWarning && { costWarning })
+    };
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(response, null, 2)
+      }]
+    };
+  }
+);
+
+// ─────────────────────────────────────────────
+// Tool: improve_prompt (v0.5.1)
+// ─────────────────────────────────────────────
+server.tool(
+  'improve_prompt',
+  `Generate an improved version of a previously analyzed prompt based on its analysis results (missingElements, axis scores). The improved version is optionally saved as a new version linked to the original via parentId.
+
+TRIGGER RULES — call this tool when:
+1. Command suffix: user ends message with ">> fix" or ">> 개선". Improve the most recent analyzed prompt.
+2. Save mode: user ends message with ">> fix+save" or ">> 개선+저장". Improve and save to history.
+3. Natural language: "이전 프롬프트 개선해줘", "improve the last prompt", "fix my prompt"`,
+  {
+    entryId: z.string().optional().describe('Entry ID to improve. If omitted, uses the last analyzed entry from this session.'),
+    projectId: z.string().optional().describe('Project ID. If omitted, uses active project.'),
+    saveResult: z.boolean().optional().describe('Save the improved prompt to history (default: false). Set true for ">> fix+save".')
+  },
+  async ({ entryId, projectId, saveResult }) => {
+    // entryId 결정: 명시 또는 세션 내 직전 ID
+    let targetEntryId;
+    try {
+      targetEntryId = entryId || session.getLastEntryId();
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: err.message }, null, 2)
+        }]
+      };
+    }
+
+    // 원본 엔트리 조회
+    const originalEntry = await storage.findEntryById(targetEntryId);
+    if (!originalEntry) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: `Entry not found: ${targetEntryId}` }, null, 2)
+        }]
+      };
+    }
+
+    const effectiveProjectId = projectId || originalEntry.projectId || storage.getActiveProject() || null;
+
+    // 개선 프롬프트 생성
+    const apiKey = storage.getApiKey();
+    let improvedPrompt;
+    try {
+      improvedPrompt = await generateImprovedPrompt(originalEntry, apiKey, storage.getModel());
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: `Improvement failed: ${err.message}` }, null, 2)
+        }]
+      };
+    }
+
+    // 개선본 분석 (점수 비교용)
+    const improvedAnalysis = analyzePrompt(improvedPrompt);
+
+    const response = {
+      originalScore: originalEntry.score,
+      originalGrade: originalEntry.grade,
+      improvedScore: improvedAnalysis.score,
+      improvedGrade: improvedAnalysis.grade,
+      scoreDelta: improvedAnalysis.score - originalEntry.score,
+      improvedPrompt,
+      originalEntryId: targetEntryId,
+      changes: {
+        resolvedMissing: (originalEntry.missingElements || []).filter(
+          m => !(improvedAnalysis.missingElements || improvedAnalysis.missing || []).includes(m)
+        ),
+        remainingMissing: improvedAnalysis.missingElements || improvedAnalysis.missing || []
+      }
+    };
+
+    // 저장 모드
+    if (saveResult && effectiveProjectId) {
+      const savedEntry = await storage.addHistoryEntry(effectiveProjectId, {
+        prompt: improvedPrompt,
+        enhanced: improvedAnalysis.enhancedPrompt || '',
+        score: improvedAnalysis.score,
+        axisScores: improvedAnalysis.axisScores,
+        tags: [...(originalEntry.tags || []), '#improved'],
+        note: `[auto-improve] from ${targetEntryId} (+${response.scoreDelta}pts)`,
+        platform: 'claude',
+        parentId: targetEntryId
+      });
+      response.savedEntryId = savedEntry.id;
+      response.version = savedEntry.version;
+      session.setLastEntry(savedEntry.id, effectiveProjectId);
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify(response, null, 2)
+      }]
+    };
+  }
+);
+
+// ─────────────────────────────────────────────
+// Tool: loop_improve (v0.5.1)
+// ─────────────────────────────────────────────
+server.tool(
+  'loop_improve',
+  `Repeatedly improve and re-analyze a prompt until a target score is reached or max iterations exceeded. Each iteration generates an improved version, analyzes it, and links it via parentId.
+
+TRIGGER RULES — call this tool when:
+1. Command suffix: user ends message with ">> loop" or ">> loop N" or ">> 루프" or ">> 루프 N" where N is the target score.
+2. Natural language: "목표 90점까지 자동 개선해줘", "keep improving until score 90", "자동 루프 돌려줘"`,
+  {
+    entryId: z.string().optional().describe('Starting entry ID. If omitted, uses the last analyzed entry from this session.'),
+    targetScore: z.number().min(0).max(100).optional().describe('Target score to reach (default: 85)'),
+    maxIterations: z.number().min(1).max(10).optional().describe('Maximum improvement iterations (default: 5)'),
+    projectId: z.string().optional().describe('Project ID. If omitted, uses active project.')
+  },
+  async ({ entryId, targetScore, maxIterations, projectId }) => {
+    // entryId 결정
+    let startEntryId;
+    try {
+      startEntryId = entryId || session.getLastEntryId();
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: err.message }, null, 2)
+        }]
+      };
+    }
+
+    const effectiveProjectId = projectId || storage.getActiveProject() || null;
+    if (!effectiveProjectId) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: '활성 프로젝트가 없습니다. 먼저 프로젝트를 생성하거나 활성 프로젝트를 설정하세요.' }, null, 2)
+        }]
+      };
+    }
+
+    const apiKey = storage.getApiKey();
+    const model = storage.getModel();
+
+    try {
+      const loopResult = await runImprovementLoop(startEntryId, {
+        targetScore: targetScore || 85,
+        maxIterations: maxIterations || 5,
+        storage,
+        analyzePrompt,
+        generateImprovedPrompt,
+        apiKey,
+        model,
+        projectId: effectiveProjectId,
+        session
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(loopResult, null, 2)
+        }]
+      };
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            error: `Improvement loop failed: ${err.message}`,
+            hint: 'Check the starting entryId and ensure it exists.'
+          }, null, 2)
+        }]
+      };
+    }
+  }
 );
 
 // ─────────────────────────────────────────────

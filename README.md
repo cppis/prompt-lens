@@ -155,7 +155,7 @@ Token overhead varies by command. **Model choice is the biggest factor.**
 
 | Model | Relative cost | Recommended for |
 |-------|--------------|-----------------|
-| Claude Haiku | **1× (baseline)** | Fast iterative analysis |
+| Claude Haiku 4.5 | **1× (baseline)** | Fast iterative analysis |
 | Claude Sonnet 4.6 | **~4×** | General use (recommended) |
 | Claude Opus 4.6 | **~20×** | High-stakes prompts only |
 
