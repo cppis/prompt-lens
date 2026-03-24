@@ -7,7 +7,13 @@
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-blueviolet?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
 [![GitHub stars](https://img.shields.io/github/stars/cppis/prompt-lens?style=social)](https://github.com/cppis/prompt-lens)
 
-> 5분 안에 PromptLens를 설치하고 첫 프롬프트를 분석해봅니다.
+PromptLens는 Claude Desktop과 Claude Code에서 동작하는 MCP(Model Context Protocol) 서버입니다.
+AI가 내 프롬프트를 어떻게 읽었는지 — 무엇을 이해했고, 무엇을 추측했고, 무엇을 몰랐는지 — 를 명시적으로 보여줍니다.
+
+`>> anz`, `>> 분석` 커맨드 또는 "이 프롬프트 분석해줘"라고 말하는 것만으로 바로 사용할 수 있습니다.
+로컬 모드는 API 키 없이 무료로 즉시 실행됩니다.
+
+> 5분 안에 PromptLens를 설치하고 첫 프롬프트를 분석해봅니다.  
 
 ---
 
