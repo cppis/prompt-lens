@@ -1,5 +1,12 @@
 # PromptLens — Getting Started
 
+[![npm version](https://img.shields.io/npm/v/promptlens-mcp?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/promptlens-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/promptlens-mcp?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/promptlens-mcp)
+[![Node.js](https://img.shields.io/node/v/promptlens-mcp?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cppis/prompt-lens/blob/main/LICENSE)
+[![MCP Compatible](https://img.shields.io/badge/MCP-compatible-blueviolet?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
+[![GitHub stars](https://img.shields.io/github/stars/cppis/prompt-lens?style=social)](https://github.com/cppis/prompt-lens)
+
 > 5분 안에 PromptLens를 설치하고 첫 프롬프트를 분석해봅니다.
 
 ---
