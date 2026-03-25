@@ -2,9 +2,9 @@
 
 [![EN](https://img.shields.io/badge/lang-EN-blue)](README.md) [![KO](https://img.shields.io/badge/lang-한국어-brightgreen)](README.ko.md)
 
-[![npm version](https://img.shields.io/npm/v/Promptic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cppis/promptic)
-[![npm downloads](https://img.shields.io/npm/dm/Promptic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cppis/promptic)
-[![Node.js](https://img.shields.io/node/v/Promptic?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![npm version](https://img.shields.io/npm/v/%40cppis%2Fpromptic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cppis/promptic)
+[![npm downloads](https://img.shields.io/npm/dm/%40cppis%2Fpromptic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cppis/promptic)
+[![Node.js](https://img.shields.io/node/v/%40cppis%2Fpromptic?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cppis/prompt-lens/blob/main/LICENSE)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-blueviolet?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
 [![GitHub release](https://img.shields.io/github/v/release/cppis/prompt-lens?logo=github)](https://github.com/cppis/prompt-lens/releases)
