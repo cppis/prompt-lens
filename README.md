@@ -2,8 +2,8 @@
 
 [![EN](https://img.shields.io/badge/lang-EN-blue)](README.md) [![KO](https://img.shields.io/badge/lang-한국어-brightgreen)](README.ko.md)
 
-[![npm version](https://img.shields.io/npm/v/prompatic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/prompatic)
-[![npm downloads](https://img.shields.io/npm/dm/prompatic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/prompatic)
+[![npm version](https://img.shields.io/npm/v/prompatic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cppis/promptic)
+[![npm downloads](https://img.shields.io/npm/dm/prompatic?color=cb3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cppis/promptic)
 [![Node.js](https://img.shields.io/node/v/prompatic?color=339933&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cppis/prompt-lens/blob/main/LICENSE)
 [![MCP Compatible](https://img.shields.io/badge/MCP-compatible-blueviolet?logo=anthropic&logoColor=white)](https://modelcontextprotocol.io/)
